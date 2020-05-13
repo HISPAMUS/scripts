@@ -12,17 +12,20 @@ Modified on Wed Apr 29 18:13:00 2020 David Rizo.
   and the height of its container region 
 
 @author: Francisco J. Castellanos
+
 @project name: HISPAMUS
-"""
-#==============================================================================
+
+==============================================================================
 
 from enum import Enum
+
 import cv2
+
 from CustomJson import CustomJson
         
-# -------- PATHS ---------
+**-------- PATHS ---------**
 str_pathdir_db = "databases/MURET"
 str_pathdir_json = str_pathdir_db + "/JSON"
 str_pathdir_src = str_pathdir_db + "/SRC"
 str_pathdir_samples = str_pathdir_db + "/SAMPLES"
-# -----------------------
+**-----------------------**
