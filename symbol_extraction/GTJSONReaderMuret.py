@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #==============================================================================
 """
@@ -6,19 +6,26 @@ Created on Tue Sep  3 08:20:50 2019
 
 @author: Francisco J. Castellanos
 @project name: Hispamus
+
+Modified David Rizo June 4
 """
 #==============================================================================
+import os
+from os.path import isdir
 
 from enum import Enum
 import cv2
 
 from CustomJson import CustomJson
-        
+
 
 str_pathdir_db = "databases/MURET"
 str_pathdir_json = str_pathdir_db + "/JSON"
 str_pathdir_src = str_pathdir_db + "/SRC"
 str_pathdir_samples = str_pathdir_db + "/SAMPLES"
+
+assert os.path.isdir(str_pathdir_json), "JSON folder as downloaded from MuRET"
+assert os.path.isdir(str_pathdir_src), "Images folder as downloaded from MuRET"
 
 class PropertyType(Enum):
     PROPERTY_TYPE_PAGES,\
@@ -88,6 +95,8 @@ class GTSymbol:
     position_in_staff = ""
     coord_p1 = (0,0)
     coord_p2 = (0,0)
+    region_coord_p1 = (0,0)
+    region_coord_p2 = (0,0)
 
     def __i_integrity(self):
         assert(type(self.name_label) is str)
@@ -123,12 +132,26 @@ class GTSymbol:
         return self.name_label in list_symbol_labels
 
 
-    def getSRCSample(self, src_image, sample_shape=None):
+    def getSRCSample(self, src_image, sample_shape=None, useRegionHeight=False):
         self.__i_integrity()
-        if len(src_image.shape) == 3:
-            sample = src_image[self.coord_p1[0]:self.coord_p2[0], self.coord_p1[1]:self.coord_p2[1], :]
+
+        fromX = self.coord_p1[1] # it's correct, first coordinate is Y, second X
+        if (useRegionHeight):
+            fromY = self.region_coord_p1[0]
         else:
-            sample = src_image[self.coord_p1[0]:self.coord_p2[0], self.coord_p1[1]:self.coord_p2[1]]
+            fromY = self.coord_p1[0]
+
+        toX = self.coord_p2[1]
+        if (useRegionHeight):
+            toY = self.region_coord_p2[0]
+        else:
+            toY = self.coord_p2[0]
+
+        if len(src_image.shape) == 3:
+            #sample = src_image[self.coord_p1[0]:self.coord_p2[0], self.coord_p1[1]:self.coord_p2[1], :]
+            sample = src_image[fromY:toY, fromX:toX, :]
+        else:
+            sample = src_image[fromY:toY, fromX:toX]
 
         if (sample_shape is not None):
             sample = redimImage(sample, sample_shape[0], sample_shape[1])
@@ -158,6 +181,9 @@ class GTSymbol:
 
     def fromDictionary(self, dictionary, region_coord_p1, region_coord_p2, dictionary_next_symbol):
         assert (type(dictionary) is dict)
+        
+        self.region_coord_p1 = region_coord_p1
+        self.region_coord_p2 = region_coord_p2
         
         if str(PropertyType.PROPERTY_TYPE_BOUNDING_BOX) in dictionary:
             info_bbox = dictionary[str(PropertyType.PROPERTY_TYPE_BOUNDING_BOX)]
@@ -254,7 +280,6 @@ class GTJSONReaderMuret:
     def fromDictionary(self, dictionary):
         assert (type(dictionary) is dict)
         
-        
         self.filename = dictionary["filename"]
 
         if str(PropertyType.PROPERTY_TYPE_PAGES) not in dictionary:
@@ -350,9 +375,10 @@ if __name__ == "__main__":
     KEY_DBNAME = "dbname"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--l', dest=KEY_LABELS, action="append", help='Name of the label to extract samples', required=False, type=str)
-    parser.add_argument('--db', dest=KEY_DBNAME, action="append", help='Name of the label to extract samples', required=False, type=str)
-    
+    parser.add_argument('--l', dest=KEY_LABELS, action="append", help='Name of the symbol label to filter extracted samples', required=False, type=str)
+    parser.add_argument('--db', dest=KEY_DBNAME, action="append", help='Path of data', required=False, type=str)
+    parser.add_argument('--rh', help='Use region/staff the height instead of the height of the symbol bounding box', required=False, action="store_true");
+
     args = parser.parse_args()
     parsed_args = vars(args)
 
@@ -366,17 +392,34 @@ if __name__ == "__main__":
     else:
         db_names = None
 
-    
+    useRegionHeight = args.rh
+    if (useRegionHeight):
+        print("Using region height to extract symbols instead of the one in the symbols bounding box")
+
     FileManager.deleteFolder(str_pathdir_samples)
     list_dirs_src, list_dirs_json = getListsPathfiles(db_names)
 
-    num_src_files = len (list_dirs_src)
-    for idx in range (num_src_files):
-        
-        str_path_file_src = list_dirs_src[idx]
-        str_path_file_json = list_dirs_json[idx]
-        str_path_file_gt_out = str_path_file_src.replace("/SRC/", "/SAMPLES/")
-    
+    #num_src_files = len (list_dirs_src)
+    num_json_files = len (list_dirs_json)
+
+    #for idx in range (num_src_files): drizo: Cannot work using a numerical index because there may be a different number files in the images and json folders
+    for i in range (num_json_files):
+        #str_path_file_src = list_dirs_src[idx]
+        str_path_file_json = list_dirs_json[i]
+        #print(">>> ", str_path_file_json)
+        print(".", end=' ', flush=True)
+
+        # From the JSON file name get the equivalent JPG image path
+        image_name = os.path.basename(str_path_file_json).replace('.json', "")
+        image_path = os.path.dirname(str_path_file_json).replace('JSON', "SRC") + "/masters"
+        str_path_file_src = image_path + "/" + image_name
+        #print("---> ", str_path_file_src)
+        assert os.path.isfile(str_path_file_src), "JPG for JSON file " + str_path_file_json
+
+        #str_path_file_gt_out = str_path_file_src.replace("/SRC/", "/SAMPLES/")
+        str_path_file_gt_out = str_path_file_json.replace("databases/MURET/JSON", "SAMPLES")
+        #str_path_file_src = str_path_file_json.replace("databases/MURET/JSON", "databases/MURET/SRC/")
+
         src_image = FileManager.loadImage(str_path_file_src, True)
 
         js = CustomJson()
@@ -385,18 +428,18 @@ if __name__ == "__main__":
         gt_symbols = GTJSONReaderMuret()
         gt_symbols.load(js)
 
-        print ("\n")
-        print ('-'*80)
-        print (gt_symbols.getFileName())
-        print ('*'*80)
-        print (*gt_symbols._i_list_symbols(),sep='\n')
-        print ('-'*80)
+        #print ("\n")
+        #print ('-'*80)
+        #print (gt_symbols.getFileName())
+        #print ('*'*80)
+        #print (*gt_symbols._i_list_symbols(),sep='\n')
+        #print ('-'*80)
 
         list_symbols = gt_symbols.getListSymbols(list_possible_name_symbols=labels)
 
         idx = 1
         for symbol in list_symbols:
-            symbol_src = symbol.getSRCSample(src_image=src_image, sample_shape=None)
+            symbol_src = symbol.getSRCSample(src_image=src_image, sample_shape=None, useRegionHeight=useRegionHeight)
 
             name_symbol = symbol.getNameSymbol().replace(".", "_")
             [pathdir, filename_with_ext] = FileManager.separateDirectoryAndFilename(str_path_file_gt_out)
@@ -406,6 +449,6 @@ if __name__ == "__main__":
             idx = idx + 1
 
 
-    
-    
+
+
     print ("Ended")
